@@ -1,0 +1,950 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserType {
+  STAFF
+  AGENCY
+  INSURED
+}
+
+enum RoleScope {
+  STAFF
+  AGENCY
+}
+
+enum AgencyStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum AgencyMembershipStatus {
+  INVITED
+  ACTIVE
+  INACTIVE
+}
+
+enum PlanTier {
+  STANDARD
+  STANDARD_AI
+}
+
+enum OfferingFormKind {
+  BASE_POLICY
+  ENDORSEMENT
+  OTHER
+}
+
+enum CoverageKind {
+  COVERAGE
+  ENDORSEMENT
+  EXCLUSION
+}
+
+enum PolicyStatus {
+  DRAFT
+  ACTIVE
+  CANCELLED
+  EXPIRED
+}
+
+enum PolicyReadinessSource {
+  NONE
+  DECLARATION_PAGE
+  AMS
+  MANUAL
+}
+
+enum DocumentKind {
+  DECLARATION_PAGE
+  CARRIER_FORM
+  ENDORSEMENT
+  TEMPLATE_ASSET
+  GENERATED_REPORT
+  OTHER
+}
+
+enum ExtractionStatus {
+  PENDING
+  PROCESSING
+  NEEDS_REVIEW
+  CONFIRMED
+  FAILED
+}
+
+enum RecommendationType {
+  MISSING_COVERAGE
+  LIMIT_INCREASE
+  CROSS_SELL
+  QUOTE
+}
+
+enum ReviewOrderItemType {
+  COVERAGE
+  QUESTION
+  QUOTE
+  RECOMMENDATION
+  SCRIPT
+  CROSS_SELL
+  INFO
+}
+
+enum ReviewChannel {
+  INSURED_PORTAL
+  AGENCY_PORTAL
+  EMAIL_LINK
+  IMPORT
+  SYSTEM
+}
+
+enum ReviewSessionStatus {
+  INVITED
+  STARTED
+  IN_PROGRESS
+  AWAITING_AGENCY
+  CLOSED
+}
+
+enum ContextBlockType {
+  STATIC
+  TEMPLATE
+  QUERY_TEMPLATE
+}
+
+enum ContextBlockScope {
+  GLOBAL
+  AGENCY
+  POLICY_TYPE
+  CARRIER_OFFERING
+}
+
+enum NoteSource {
+  AI_REVIEW
+  AI_QA
+  AGENCY_USER
+  IMPORT
+  AMS
+  SYSTEM
+}
+
+enum TaskType {
+  CHANGE_REQUEST
+  CANCELLATION
+  QUOTE_REQUEST
+  FOLLOW_UP
+  DATA_REVIEW
+  REVIEW_ACTION
+}
+
+enum TaskStatus {
+  OPEN
+  IN_PROGRESS
+  BLOCKED
+  CLOSED
+}
+
+enum NotificationEndpointKind {
+  SERVICE
+  CANCELLATION
+  CROSS_SELL_PERSONAL
+  CROSS_SELL_COMMERCIAL
+  BILLING
+  GENERAL
+}
+
+model User {
+  id               String            @id @default(cuid())
+  email            String            @unique
+  firstName        String?
+  lastName         String?
+  phone            String?
+  passwordHash     String?
+  userType         UserType
+  isActive         Boolean           @default(true)
+  ssoProvider      String?
+  lastLoginAt      DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  agencyMemberships AgencyMembership[]
+  contacts         InsuredContact[]
+  staffRoles       StaffUserRole[]
+  magicLinks       MagicLoginToken[]
+  uploadedDocuments Document[]       @relation("UploadedDocuments")
+  initiatedReviews ReviewSession[]   @relation("ReviewInitiator")
+  assignedTasks    ReviewTask[]      @relation("TaskAssignee")
+  authoredNotes    ActivityNote[]    @relation("NoteAuthor")
+  aiUsageEvents    AiUsageEvent[]
+}
+
+model Role {
+  id                String            @id @default(cuid())
+  key               String            @unique
+  name              String
+  scope             RoleScope
+  isSystem          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  permissions       RolePermission[]
+  staffAssignments  StaffUserRole[]
+  agencyMemberships AgencyMembership[]
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  key         String           @unique
+  name        String
+  description String?
+  scope       RoleScope
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+}
+
+model StaffUserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+}
+
+model FeatureFlag {
+  id             String             @id @default(cuid())
+  key            String             @unique
+  name           String
+  description    String?
+  defaultEnabled Boolean            @default(false)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  agencies       AgencyFeatureFlag[]
+}
+
+model Agency {
+  id                    String                 @id @default(cuid())
+  name                  String
+  slug                  String                 @unique
+  status                AgencyStatus           @default(ACTIVE)
+  primaryEmail          String?
+  primaryPhone          String?
+  logoStoragePath       String?
+  timezone              String                 @default("America/New_York")
+  planTier              PlanTier               @default(STANDARD)
+  hasInAppAi            Boolean                @default(false)
+  settings              Json?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  memberships           AgencyMembership[]
+  featureFlags          AgencyFeatureFlag[]
+  carrierAppointments   AgencyCarrierAppointment[]
+  insuredAccounts       InsuredAccount[]
+  policies              Policy[]
+  policyTypeSettings    AgencyPolicyTypeSetting[]
+  recommendations       AgencyRecommendation[]
+  crossSellRules        AgencyCrossSellRule[]
+  reviewOrderItems      ReviewOrderItem[]
+  documents             Document[]
+  reviewSessions        ReviewSession[]
+  tasks                 ReviewTask[]
+  notes                 ActivityNote[]
+  notificationEndpoints NotificationEndpoint[]
+  emailTemplates        EmailTemplate[]
+  contextBlocks         ContextBlock[]
+  aiUsageEvents         AiUsageEvent[]
+}
+
+model AgencyFeatureFlag {
+  agencyId      String
+  featureFlagId String
+  enabled       Boolean
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  agency        Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  featureFlag   FeatureFlag @relation(fields: [featureFlagId], references: [id], onDelete: Cascade)
+
+  @@id([agencyId, featureFlagId])
+}
+
+model AgencyMembership {
+  id        String                 @id @default(cuid())
+  agencyId  String
+  userId    String
+  roleId    String
+  status    AgencyMembershipStatus @default(INVITED)
+  isPrimary Boolean                @default(false)
+  invitedAt DateTime?
+  joinedAt  DateTime?
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+  agency    Agency                 @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  user      User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      Role                   @relation(fields: [roleId], references: [id])
+
+  @@unique([agencyId, userId])
+}
+
+model State {
+  id              String                 @id @default(cuid())
+  code            String                 @unique
+  name            String
+  isActive        Boolean                @default(true)
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  insuredAccounts InsuredAccount[]
+  policies        Policy[]
+  offerings       CarrierPolicyOffering[]
+  appointments    AgencyCarrierAppointment[]
+}
+
+model Carrier {
+  id           String                 @id @default(cuid())
+  name         String
+  slug         String                 @unique
+  naicCode     String?
+  isActive     Boolean                @default(true)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+  offerings    CarrierPolicyOffering[]
+  appointments AgencyCarrierAppointment[]
+  policies     Policy[]
+}
+
+model PolicyType {
+  id                 String                  @id @default(cuid())
+  code               String                  @unique
+  name               String
+  lineOfBusiness     String?
+  isActive           Boolean                 @default(true)
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+  coverageDefinitions CoverageDefinition[]
+  offerings          CarrierPolicyOffering[]
+  policies           Policy[]
+  agencySettings     AgencyPolicyTypeSetting[]
+  recommendations    AgencyRecommendation[]
+  crossSellSources   AgencyCrossSellRule[]   @relation("CrossSellSource")
+  crossSellTargets   AgencyCrossSellRule[]   @relation("CrossSellTarget")
+  reviewOrderItems   ReviewOrderItem[]
+  contextBlocks      ContextBlock[]
+  agencyCoverageSettings AgencyCoverageSetting[]
+}
+
+model CoverageCategory {
+  id          String               @id @default(cuid())
+  code        String               @unique
+  name        String
+  description String?
+  sortOrder   Int                  @default(0)
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+  coverages   CoverageDefinition[]
+}
+
+model CoverageDefinition {
+  id                    String              @id @default(cuid())
+  code                  String?             @unique
+  categoryId            String?
+  policyTypeId          String?
+  kind                  CoverageKind        @default(COVERAGE)
+  name                  String
+  aliasOne              String?
+  aliasTwo              String?
+  definition            String?
+  claimExamples         String?
+  additionalHelp        String?
+  riskSummary           String?
+  isCommonlyRecommended Boolean             @default(false)
+  isActive              Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  category              CoverageCategory?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  policyType            PolicyType?         @relation(fields: [policyTypeId], references: [id], onDelete: SetNull)
+  formMappings          FormCoverageMapping[]
+  recommendations       AgencyRecommendation[]
+  reviewOrderItems      ReviewOrderItem[]
+  agencyCoverageSettings AgencyCoverageSetting[]
+}
+
+model CarrierPolicyOffering {
+  id               String           @id @default(cuid())
+  carrierId        String
+  stateId          String
+  policyTypeId     String
+  isActive         Boolean          @default(true)
+  metadata         Json?
+  decExtractionHints String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  carrier          Carrier          @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+  state            State            @relation(fields: [stateId], references: [id], onDelete: Cascade)
+  policyType       PolicyType       @relation(fields: [policyTypeId], references: [id], onDelete: Cascade)
+  forms            OfferingForm[]
+  reviewOrderItems ReviewOrderItem[]
+  contextBlocks    ContextBlock[]
+
+  @@unique([carrierId, stateId, policyTypeId])
+}
+
+model OfferingForm {
+  id                    String              @id @default(cuid())
+  offeringId            String
+  title                 String
+  formCode              String?
+  formNumber            String?
+  version               String?
+  editionDate           String?
+  kind                  OfferingFormKind
+  isBasePolicy          Boolean             @default(false)
+  formNumberOverride    Boolean             @default(false)
+  versionOverride       Boolean             @default(false)
+  isPackageEndorsement  Boolean             @default(false)
+  mutuallyExclusiveGroup String?
+  pageCount             Int?
+  sourceFilename        String?
+  storagePath           String?
+  extractedText         String?
+  textSummary           String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  offering              CarrierPolicyOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  coverageMappings      FormCoverageMapping[]
+  policySelections      PolicyFormSelection[]
+  sections              OfferingFormSection[]
+
+  @@unique([offeringId, title])
+}
+
+model OfferingFormSection {
+  id             String                @id @default(cuid())
+  offeringFormId String
+  parentId       String?
+  sectionRef     String?
+  title          String
+  sectionType    String
+  content        String
+  sortOrder      Int                   @default(0)
+  createdAt      DateTime              @default(now())
+  updatedAt      DateTime              @updatedAt
+  offeringForm   OfferingForm          @relation(fields: [offeringFormId], references: [id], onDelete: Cascade)
+  parent         OfferingFormSection?  @relation("SectionHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children       OfferingFormSection[] @relation("SectionHierarchy")
+  modifications  SectionModification[]
+}
+
+model SectionModification {
+  id                   String              @id @default(cuid())
+  endorsementSectionId String
+  baseSectionRef       String
+  baseSectionTitle     String
+  modificationType     String
+  summary              String
+  createdAt            DateTime            @default(now())
+  endorsementSection   OfferingFormSection @relation(fields: [endorsementSectionId], references: [id], onDelete: Cascade)
+}
+
+model FormCoverageMapping {
+  id                  String             @id @default(cuid())
+  offeringFormId      String
+  coverageDefinitionId String
+  isManualOverride    Boolean            @default(false)
+  isRemoved           Boolean            @default(false)
+  knownMaxLimit       Decimal?           @db.Decimal(12, 2)
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+  offeringForm        OfferingForm       @relation(fields: [offeringFormId], references: [id], onDelete: Cascade)
+  coverageDefinition  CoverageDefinition @relation(fields: [coverageDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([offeringFormId, coverageDefinitionId])
+}
+
+model AgencyCarrierAppointment {
+  id        String   @id @default(cuid())
+  agencyId  String
+  carrierId String
+  stateId   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  agency    Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  carrier   Carrier  @relation(fields: [carrierId], references: [id], onDelete: Cascade)
+  state     State?   @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  coverageSettings AgencyCoverageSetting[]
+
+  @@unique([agencyId, carrierId, stateId])
+}
+
+model AgencyCoverageSetting {
+  id                         String                   @id @default(cuid())
+  agencyCarrierAppointmentId String
+  coverageDefinitionId       String
+  policyTypeId               String
+  isAvailable                Boolean                  @default(true)
+  limitTiers                 Json?
+  defaultLimitValue          Decimal?                 @db.Decimal(12, 2)
+  notes                      String?
+  createdAt                  DateTime                 @default(now())
+  updatedAt                  DateTime                 @updatedAt
+  appointment                AgencyCarrierAppointment @relation(fields: [agencyCarrierAppointmentId], references: [id], onDelete: Cascade)
+  coverageDefinition         CoverageDefinition       @relation(fields: [coverageDefinitionId], references: [id], onDelete: Cascade)
+  policyType                 PolicyType               @relation(fields: [policyTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyCarrierAppointmentId, coverageDefinitionId, policyTypeId])
+}
+
+model AgencyPolicyTypeSetting {
+  id           String     @id @default(cuid())
+  agencyId     String
+  policyTypeId String
+  enabled      Boolean    @default(true)
+  reviewConfig Json?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  agency       Agency     @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  policyType   PolicyType @relation(fields: [policyTypeId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, policyTypeId])
+}
+
+model AgencyRecommendation {
+  id                  String              @id @default(cuid())
+  agencyId            String
+  policyTypeId        String
+  coverageDefinitionId String?
+  type                RecommendationType
+  title               String
+  description         String?
+  minimumLimitText    String?
+  isEnabled           Boolean             @default(true)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  agency              Agency              @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  policyType          PolicyType          @relation(fields: [policyTypeId], references: [id], onDelete: Cascade)
+  coverageDefinition  CoverageDefinition? @relation(fields: [coverageDefinitionId], references: [id], onDelete: SetNull)
+
+  @@unique([agencyId, policyTypeId, title])
+}
+
+model AgencyCrossSellRule {
+  id                 String      @id @default(cuid())
+  agencyId           String
+  sourcePolicyTypeId String?
+  targetPolicyTypeId String?
+  label              String?
+  audience           String?
+  priority           Int         @default(0)
+  isEnabled          Boolean     @default(true)
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  agency             Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  sourcePolicyType   PolicyType? @relation("CrossSellSource", fields: [sourcePolicyTypeId], references: [id], onDelete: SetNull)
+  targetPolicyType   PolicyType? @relation("CrossSellTarget", fields: [targetPolicyTypeId], references: [id], onDelete: SetNull)
+
+  @@unique([agencyId, sourcePolicyTypeId, targetPolicyTypeId, label])
+}
+
+model ReviewOrderItem {
+  id                  String               @id @default(cuid())
+  policyTypeId        String?
+  offeringId          String?
+  agencyId            String?
+  coverageDefinitionId String?
+  itemType            ReviewOrderItemType
+  label               String
+  sortOrder           Int
+  metadata            Json?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  policyType          PolicyType?          @relation(fields: [policyTypeId], references: [id], onDelete: SetNull)
+  offering            CarrierPolicyOffering? @relation(fields: [offeringId], references: [id], onDelete: SetNull)
+  agency              Agency?              @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  coverageDefinition  CoverageDefinition?  @relation(fields: [coverageDefinitionId], references: [id], onDelete: SetNull)
+}
+
+model InsuredAccount {
+  id             String          @id @default(cuid())
+  agencyId       String
+  accountCode    String
+  displayName    String
+  primaryStateId String?
+  primaryEmail   String?
+  primaryPhone   String?
+  streetLineOne  String?
+  streetLineTwo  String?
+  city           String?
+  stateCode      String?
+  postalCode     String?
+  county         String?
+  amsExternalId  String?
+  sourceSystem   String?
+  notes          String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  agency         Agency          @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  primaryState   State?          @relation(fields: [primaryStateId], references: [id], onDelete: SetNull)
+  contacts       InsuredContact[]
+  policies       Policy[]
+  reviewSessions ReviewSession[]
+  tasks          ReviewTask[]
+  notesList      ActivityNote[]
+  aiUsageEvents  AiUsageEvent[]
+
+  @@unique([agencyId, accountCode])
+}
+
+model InsuredContact {
+  id              String        @id @default(cuid())
+  insuredAccountId String
+  userId          String?
+  firstName       String?
+  lastName        String?
+  email           String?
+  phone           String?
+  isPrimary       Boolean       @default(false)
+  relationship    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  insuredAccount  InsuredAccount @relation(fields: [insuredAccountId], references: [id], onDelete: Cascade)
+  user            User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+}
+
+model Policy {
+  id                   String               @id @default(cuid())
+  agencyId             String
+  insuredAccountId     String
+  policyTypeId         String
+  carrierId            String?
+  stateId              String?
+  policyNumber         String?
+  status               PolicyStatus         @default(DRAFT)
+  effectiveDate        DateTime?
+  expirationDate       DateTime?
+  premium              Decimal?             @db.Decimal(12, 2)
+  deductible           Decimal?             @db.Decimal(12, 2)
+  propertyStreet       String?
+  propertyCity         String?
+  propertyStateCode    String?
+  propertyPostalCode   String?
+  propertyCounty       String?
+  readinessSource      PolicyReadinessSource @default(NONE)
+  readinessConfirmedAt DateTime?
+  policyFormCode       String?
+  decForms             Json?
+  extractedCarrierName String?
+  mortgagee            String?
+  amsExternalId        String?
+  producerName         String?
+  locationName         String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  agency               Agency               @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  insuredAccount       InsuredAccount       @relation(fields: [insuredAccountId], references: [id], onDelete: Cascade)
+  policyType           PolicyType           @relation(fields: [policyTypeId], references: [id], onDelete: Cascade)
+  carrier              Carrier?             @relation(fields: [carrierId], references: [id], onDelete: SetNull)
+  state                State?               @relation(fields: [stateId], references: [id], onDelete: SetNull)
+  declarationPages     PolicyDeclarationPage[]
+  formSelections       PolicyFormSelection[]
+  coverages            PolicyCoverage[]
+  reviewSessions       ReviewSession[]
+  tasks                ReviewTask[]
+  notes                ActivityNote[]
+  aiUsageEvents        AiUsageEvent[]
+
+  @@unique([agencyId, policyNumber])
+}
+
+model PolicyCoverage {
+  id            String   @id @default(cuid())
+  policyId      String
+  section       String   // "PROPERTY", "LIABILITY", "OPTIONAL", "CREDIT"
+  label         String   // e.g. "A. Residence", "L. Personal Liability"
+  coverageCode  String?  // e.g. "A", "B", "C", "D", "L", "M"
+  limitAmount   Decimal? @db.Decimal(12, 2)
+  limitText     String?  // human-readable limit when not purely numeric
+  premiumAmount Decimal? @db.Decimal(12, 2)
+  premiumText   String?  // "Incl.", "-$30.00" etc.
+  deductible    String?
+  source        String   @default("dec_import") // "dec_import", "extraction", "manual"
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  policy        Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, section, label])
+}
+
+model Document {
+  id               String                 @id @default(cuid())
+  agencyId         String?
+  kind             DocumentKind
+  bucket           String
+  storagePath      String
+  fileName         String
+  mimeType         String
+  sizeBytes        Int?
+  uploadedByUserId String?
+  metadata         Json?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  agency           Agency?                @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  uploadedBy       User?                  @relation("UploadedDocuments", fields: [uploadedByUserId], references: [id], onDelete: SetNull)
+  declarationPages PolicyDeclarationPage[]
+
+  @@unique([bucket, storagePath])
+}
+
+model PolicyDeclarationPage {
+  id              String           @id @default(cuid())
+  policyId        String
+  documentId      String
+  isActive        Boolean          @default(true)
+  extractionStatus ExtractionStatus @default(PENDING)
+  confidence      Decimal?         @db.Decimal(5, 4)
+  extractedSummary Json?
+  humanConfirmedAt DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  policy          Policy           @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  document        Document         @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, documentId])
+}
+
+model PolicyFormSelection {
+  id            String      @id @default(cuid())
+  policyId      String
+  offeringFormId String
+  source        String
+  limitText     String?
+  selectedAt    DateTime    @default(now())
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  policy        Policy      @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  offeringForm  OfferingForm @relation(fields: [offeringFormId], references: [id], onDelete: Cascade)
+
+  @@unique([policyId, offeringFormId])
+}
+
+model ReviewSession {
+  id                String              @id @default(cuid())
+  agencyId          String
+  insuredAccountId  String
+  policyId          String?
+  initiatedByUserId String?
+  channel           ReviewChannel
+  status            ReviewSessionStatus @default(INVITED)
+  reviewType        String?
+  summary           String?
+  transcript        Json?
+  assembledContext   Json?
+  actionItems       Json?
+  startedAt         DateTime?
+  completedAt       DateTime?
+  closedAt          DateTime?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  agency            Agency              @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  insuredAccount    InsuredAccount      @relation(fields: [insuredAccountId], references: [id], onDelete: Cascade)
+  policy            Policy?             @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  initiatedBy       User?               @relation("ReviewInitiator", fields: [initiatedByUserId], references: [id], onDelete: SetNull)
+  tasks             ReviewTask[]
+  notes             ActivityNote[]
+  aiUsageEvents     AiUsageEvent[]
+}
+
+model AiUsageEvent {
+  id                   String         @id @default(cuid())
+  gateway              String
+  provider             String?
+  operation            String
+  surface              String
+  status               String
+  model                String
+  requestedModel       String?
+  userType             UserType?
+  agencyId             String?
+  userId               String?
+  insuredAccountId     String?
+  policyId             String?
+  reviewSessionId      String?
+  route                String?
+  screen               String?
+  providerRequestId    String?
+  latencyMs            Int?
+  messageCount         Int            @default(0)
+  inputCharacters      Int            @default(0)
+  outputCharacters     Int            @default(0)
+  toolCallCount        Int            @default(0)
+  inputTokens          Int            @default(0)
+  inputCachedTokens    Int            @default(0)
+  inputCacheWriteTokens Int           @default(0)
+  inputAudioTokens     Int            @default(0)
+  outputTokens         Int            @default(0)
+  outputAudioTokens    Int            @default(0)
+  reasoningTokens      Int            @default(0)
+  totalTokens          Int            @default(0)
+  maxTokens            Int?
+  temperature          Float?
+  providerCost         Decimal?       @db.Decimal(12, 6)
+  cacheDiscount        Decimal?       @db.Decimal(12, 6)
+  meta                 Json?
+  usage                Json?
+  errorCode            String?
+  errorMessage         String?
+  createdAt            DateTime       @default(now())
+  agency               Agency?        @relation(fields: [agencyId], references: [id], onDelete: SetNull)
+  user                 User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  insuredAccount       InsuredAccount? @relation(fields: [insuredAccountId], references: [id], onDelete: SetNull)
+  policy               Policy?        @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  reviewSession        ReviewSession? @relation(fields: [reviewSessionId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([agencyId, createdAt])
+  @@index([userId, createdAt])
+  @@index([insuredAccountId, createdAt])
+  @@index([policyId, createdAt])
+  @@index([reviewSessionId, createdAt])
+  @@index([gateway, createdAt])
+  @@index([provider, createdAt])
+  @@index([surface, createdAt])
+  @@index([operation, createdAt])
+  @@index([status, createdAt])
+  @@index([model, createdAt])
+}
+
+model ActivityNote {
+  id               String        @id @default(cuid())
+  agencyId         String
+  insuredAccountId String
+  policyId         String?
+  reviewSessionId  String?
+  createdByUserId  String?
+  source           NoteSource
+  title            String
+  body             String
+  externalActivityId String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  agency           Agency        @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  insuredAccount   InsuredAccount @relation(fields: [insuredAccountId], references: [id], onDelete: Cascade)
+  policy           Policy?       @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  reviewSession    ReviewSession? @relation(fields: [reviewSessionId], references: [id], onDelete: SetNull)
+  createdBy        User?         @relation("NoteAuthor", fields: [createdByUserId], references: [id], onDelete: SetNull)
+}
+
+model ReviewTask {
+  id               String      @id @default(cuid())
+  agencyId         String
+  insuredAccountId String
+  policyId         String?
+  reviewSessionId  String?
+  assignedToUserId String?
+  type             TaskType
+  status           TaskStatus  @default(OPEN)
+  title            String
+  description      String?
+  dueAt            DateTime?
+  closedAt         DateTime?
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  agency           Agency      @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  insuredAccount   InsuredAccount @relation(fields: [insuredAccountId], references: [id], onDelete: Cascade)
+  policy           Policy?     @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  reviewSession    ReviewSession? @relation(fields: [reviewSessionId], references: [id], onDelete: SetNull)
+  assignedTo       User?       @relation("TaskAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+}
+
+model NotificationEndpoint {
+  id          String                   @id @default(cuid())
+  agencyId    String
+  kind        NotificationEndpointKind
+  label       String
+  destination String
+  isEnabled   Boolean                  @default(true)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  agency      Agency                   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, kind, destination])
+}
+
+model EmailTemplate {
+  id         String   @id @default(cuid())
+  agencyId   String
+  name       String
+  templateType String
+  subject    String?
+  bodyHtml   String?
+  bodyText   String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  agency     Agency   @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+
+  @@unique([agencyId, name])
+}
+
+model ContextBlock {
+  id                  String              @id @default(cuid())
+  key                 String              @unique
+  name                String
+  type                ContextBlockType
+  scope               ContextBlockScope   @default(GLOBAL)
+  content             String
+  resolverKey         String?
+  agents              String[]            @default([])
+  sortOrder           Int                 @default(100)
+  isActive            Boolean             @default(true)
+  requiredFeatureFlag String?
+  allowedUserTypes    String[]
+  requiredPlanTier    PlanTier?
+  agencyId            String?
+  policyTypeId        String?
+  offeringId          String?
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  agency              Agency?             @relation(fields: [agencyId], references: [id], onDelete: Cascade)
+  policyType          PolicyType?         @relation(fields: [policyTypeId], references: [id], onDelete: SetNull)
+  offering            CarrierPolicyOffering? @relation(fields: [offeringId], references: [id], onDelete: SetNull)
+}
+
+model ToolDefinition {
+  id            String   @id @default(cuid())
+  key           String   @unique
+  name          String
+  description   String
+  parameters    Json
+  agents        String[]
+  screens       String[] @default([])
+  requiredFlags      String[] @default([])
+  requiredPermission String?
+  isActive           Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+}
+
+model MagicLoginToken {
+  id        String   @id @default(cuid())
+  userId    String
+  email     String
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}

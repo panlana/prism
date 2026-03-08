@@ -1,0 +1,30 @@
+{
+  "name": "prism-v4",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "server",
+    "ui"
+  ],
+  "scripts": {
+    "dev:server": "npm --workspace server run dev",
+    "dev:ui": "npm --workspace ui run dev",
+    "build": "npm run build --workspaces",
+    "lint": "npm run lint --workspaces",
+    "lint:setup": "tsc --noEmit -p setup/tsconfig.json",
+    "db:generate": "npm --workspace server run db:generate",
+    "db:migrate": "npm --workspace server run db:migrate",
+    "db:push": "npm --workspace server run db:push",
+    "db:seed": "node --import tsx setup/seed-all.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "dependencies": {
+    "marked": "^17.0.4"
+  }
+}
